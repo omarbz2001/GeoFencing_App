@@ -8,9 +8,8 @@
  * point-in-polygon checks on geographic coordinates.
  */
 
-// Default geofence: a roughly rectangular farm area.
-// These are example coordinates — you can change them to match a real location.
-const GEOFENCE = {
+// Live geofence state — mutable so the UI can update it at runtime
+let _geofence = {
   name: "Main Farm",
   // Each point is [latitude, longitude]
   polygon: [
@@ -20,6 +19,27 @@ const GEOFENCE = {
     [36.8150, 10.1800],
   ],
 };
+
+// Getter always returns the current live state
+const GEOFENCE = new Proxy({}, {
+  get(_, key) { return _geofence[key]; },
+});
+
+/**
+ * Update the geofence polygon at runtime.
+ * @param {Array} newPolygon - array of [lat, lng] pairs
+ * @param {string} [name] - optional new name
+ */
+function updateGeofence(newPolygon, name) {
+  _geofence = {
+    name: name || _geofence.name,
+    polygon: newPolygon,
+  };
+}
+
+function getGeofence() {
+  return { ..._geofence };
+}
 
 /**
  * Ray casting algorithm to check if a point is inside a polygon.
@@ -46,4 +66,4 @@ function isInsideGeofence(lat, lng, polygon = GEOFENCE.polygon) {
   return inside;
 }
 
-module.exports = { GEOFENCE, isInsideGeofence };
+module.exports = { GEOFENCE, isInsideGeofence, updateGeofence, getGeofence };

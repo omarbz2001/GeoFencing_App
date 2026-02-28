@@ -4,14 +4,16 @@ const { Server } = require("socket.io");
 const cors = require("cors");
 
 const { startSimulator, getAnimalsState, getHistory } = require("./simulator/simulator");
+const { getGeofence } = require("./geofence/geofence");
 const animalRoutes = require("./routes/animals");
+const geofenceRoutes = require("./routes/geofence");
 
 const app = express();
 const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: "*", // In production, restrict this to your frontend URL
+    origin: "*",
     methods: ["GET", "POST"],
   },
 });
@@ -19,8 +21,12 @@ const io = new Server(server, {
 app.use(cors());
 app.use(express.json());
 
+// Attach io to every request so routes can emit events
+app.use((req, _res, next) => { req.io = io; next(); });
+
 // REST routes
 app.use("/api/animals", animalRoutes);
+app.use("/api/geofence", geofenceRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {
@@ -33,6 +39,7 @@ io.on("connection", (socket) => {
 
   // Send current state immediately on connect
   socket.emit("animals:snapshot", getAnimalsState());
+  socket.emit("geofence:updated", getGeofence());
 
   // Client can request history for a specific animal
   socket.on("animal:history", ({ animalId, limit }) => {

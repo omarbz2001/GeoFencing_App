@@ -47,7 +47,7 @@ styleEl.textContent = globalCSS;
 document.head.appendChild(styleEl);
 
 export default function App() {
-  const { animals, alerts, connected, lastTick } = useSocket();
+  const { animals, alerts, connected, lastTick, socket } = useSocket();
   const history = useHistory(animals);
   const [selectedId, setSelectedId] = useState(null);
 
@@ -78,6 +78,7 @@ export default function App() {
               animals={animals}
               selectedId={selectedId}
               onSelectAnimal={setSelectedId}
+              socket={socket}
             />
           </div>
           <VitalsChart
