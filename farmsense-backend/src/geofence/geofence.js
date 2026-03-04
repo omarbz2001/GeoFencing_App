@@ -1,69 +1,102 @@
 /**
  * Geofence module
  *
- * Defines the farm boundary as a polygon (lat/lng coordinates)
- * and provides a function to check if a point is inside it.
+ * Polygon is persisted to geofence.json next to this file so it survives
+ * server restarts. Falls back to the hardcoded default on first run.
  *
- * The algorithm used is the Ray Casting method — standard for
- * point-in-polygon checks on geographic coordinates.
+ * Breach detection uses the Ray Casting algorithm.
  */
 
-// Live geofence state — mutable so the UI can update it at runtime
-let _geofence = {
-  name: "Main Farm",
-  // Each point is [latitude, longitude]
-  polygon: [
-    [36.8200, 10.1800],
-    [36.8200, 10.1870],
-    [36.8150, 10.1870],
-    [36.8150, 10.1800],
-  ],
-};
+const fs   = require("fs");
+const path = require("path");
 
-// Getter always returns the current live state
-const GEOFENCE = new Proxy({}, {
-  get(_, key) { return _geofence[key]; },
-});
+const PERSIST_FILE = path.join(__dirname, "geofence.json");
 
-/**
- * Update the geofence polygon at runtime.
- * @param {Array} newPolygon - array of [lat, lng] pairs
- * @param {string} [name] - optional new name
- */
-function updateGeofence(newPolygon, name) {
-  _geofence = {
-    name: name || _geofence.name,
-    polygon: newPolygon,
+const DEFAULT_POLYGON = [
+  [36.8200, 10.1800],
+  [36.8200, 10.1870],
+  [36.8150, 10.1870],
+  [36.8150, 10.1800],
+];
+
+// ---------------------------------------------------------------------------
+// Load from disk (or use default on first run)
+// ---------------------------------------------------------------------------
+function loadFromDisk() {
+  try {
+    if (fs.existsSync(PERSIST_FILE)) {
+      const raw  = fs.readFileSync(PERSIST_FILE, "utf8");
+      const data = JSON.parse(raw);
+      if (data?.polygon?.length >= 3) {
+        console.log("[Geofence] Loaded from disk:", PERSIST_FILE);
+        return data;
+      }
+    }
+  } catch (err) {
+    console.warn("[Geofence] Could not read persist file, using default:", err.message);
+  }
+  return { name: "Main Farm", polygon: DEFAULT_POLYGON };
+}
+
+// ---------------------------------------------------------------------------
+// Save to disk (synchronous — only called on explicit user save, not hot path)
+// ---------------------------------------------------------------------------
+function saveToDisk(geofence) {
+  try {
+    fs.writeFileSync(PERSIST_FILE, JSON.stringify(geofence, null, 2), "utf8");
+  } catch (err) {
+    console.error("[Geofence] Failed to persist to disk:", err.message);
+    throw err; // bubble up so the HTTP route can return a 500
+  }
+}
+
+// ---------------------------------------------------------------------------
+// In-memory state — initialized from disk
+// ---------------------------------------------------------------------------
+let _geofence = loadFromDisk();
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/** Returns a deep copy of the current geofence (safe to send over HTTP/socket) */
+function getGeofence() {
+  return {
+    name:    _geofence.name,
+    polygon: _geofence.polygon.map(p => [...p]),
   };
 }
 
-function getGeofence() {
-  return { ..._geofence };
+/**
+ * Update the geofence polygon and persist it to disk.
+ * Throws if the disk write fails.
+ */
+function updateGeofence(newPolygon, name) {
+  _geofence = {
+    name:    name || _geofence.name,
+    polygon: newPolygon,
+  };
+  saveToDisk(_geofence);
 }
 
-/**
- * Ray casting algorithm to check if a point is inside a polygon.
- * @param {number} lat
- * @param {number} lng
- * @param {Array} polygon - array of [lat, lng] pairs
- * @returns {boolean}
- */
-function isInsideGeofence(lat, lng, polygon = GEOFENCE.polygon) {
+// ---------------------------------------------------------------------------
+// Ray casting — point-in-polygon
+// ---------------------------------------------------------------------------
+function isInsideGeofence(lat, lng) {
+  // Always read _geofence.polygon directly so we use the latest saved shape
+  const polygon = _geofence.polygon;
   let inside = false;
   const n = polygon.length;
 
   for (let i = 0, j = n - 1; i < n; j = i++) {
     const [yi, xi] = polygon[i];
     const [yj, xj] = polygon[j];
-
     const intersect =
-      yi > lng !== yj > lng &&
+      (yi > lng) !== (yj > lng) &&
       lat < ((xj - xi) * (lng - yi)) / (yj - yi) + xi;
-
     if (intersect) inside = !inside;
   }
-
   return inside;
 }
 
-module.exports = { GEOFENCE, isInsideGeofence, updateGeofence, getGeofence };
+module.exports = { getGeofence, updateGeofence, isInsideGeofence };

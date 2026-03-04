@@ -1,47 +1,38 @@
 const express = require("express");
-const http = require("http");
+const http    = require("http");
 const { Server } = require("socket.io");
-const cors = require("cors");
+const cors   = require("cors");
 
 const { startSimulator, getAnimalsState, getHistory } = require("./simulator/simulator");
-const { getGeofence } = require("./geofence/geofence");
-const animalRoutes = require("./routes/animals");
+const animalRoutes   = require("./routes/animals");
 const geofenceRoutes = require("./routes/geofence");
 
-const app = express();
+const app    = express();
 const server = http.createServer(app);
 
 const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"],
-  },
+  cors: { origin: "*", methods: ["GET", "POST"] },
 });
 
 app.use(cors());
 app.use(express.json());
 
-// Attach io to every request so routes can emit events
+// Attach io instance to every request so routes can broadcast
 app.use((req, _res, next) => { req.io = io; next(); });
 
-// REST routes
-app.use("/api/animals", animalRoutes);
+app.use("/api/animals",  animalRoutes);
 app.use("/api/geofence", geofenceRoutes);
 
-// Health check
-app.get("/api/health", (req, res) => {
+app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// Socket.IO connection handling
 io.on("connection", (socket) => {
   console.log(`[Socket] Client connected: ${socket.id}`);
 
-  // Send current state immediately on connect
+  // Send initial animals snapshot — geofence is loaded via HTTP GET, not socket
   socket.emit("animals:snapshot", getAnimalsState());
-  socket.emit("geofence:updated", getGeofence());
 
-  // Client can request history for a specific animal
   socket.on("animal:history", ({ animalId, limit }) => {
     const history = getHistory(animalId, limit || 50);
     socket.emit("animal:history", { animalId, history });
@@ -52,7 +43,6 @@ io.on("connection", (socket) => {
   });
 });
 
-// Start the mock data simulator — it will emit events to all connected clients
 startSimulator(io);
 
 const PORT = process.env.PORT || 3001;

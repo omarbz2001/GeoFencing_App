@@ -11,7 +11,7 @@
  * via Socket.IO to all connected frontend clients.
  */
 
-const { isInsideGeofence, GEOFENCE } = require("../geofence/geofence");
+const { isInsideGeofence, getGeofence } = require("../geofence/geofence");
 
 const UPDATE_INTERVAL = 3000; // ms between sensor updates
 
@@ -43,8 +43,8 @@ let history = {};       // circular buffer of last 100 readings per animal
 // ---------------------------------------------------------------------------
 function initAnimals() {
   // Center of the geofence polygon
-  const centerLat = average(GEOFENCE.polygon.map(([lat]) => lat));
-  const centerLng = average(GEOFENCE.polygon.map(([, lng]) => lng));
+  const centerLat = average(getGeofence().polygon.map(([lat]) => lat));
+  const centerLng = average(getGeofence().polygon.map(([, lng]) => lng));
 
   ANIMALS.forEach((animal, index) => {
     // Spread animals out a little from the center
