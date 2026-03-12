@@ -55,6 +55,7 @@ export default function FarmMap({ animals, selectedId, onSelectAnimal, socket })
   const animalMarkers = useRef({});
   const savedPolygon  = useRef(null);   // last successfully saved polygon
   const isEditing     = useRef(false);
+  const pannedForId   = useRef(null);    // tracks which selectedId we already panned to
 
   const [editMode,  setEditMode]  = useState(false);
   const [saving,    setSaving]    = useState(false);
@@ -287,7 +288,18 @@ export default function FarmMap({ animals, selectedId, onSelectAnimal, socket })
 
   useEffect(() => {
     const map = mapInstance.current;
-    if (!map || !selectedId || !animals[selectedId]) return;
+    // Only pan when selectedId itself changes, not when animal positions update.
+    // pannedForId ref ensures we pan exactly once per selection, not on every
+    // socket tick that updates the animals object.
+    if (!selectedId) {
+      // Deselection — close any open popup and reset
+      map?.closePopup();
+      pannedForId.current = null;
+      return;
+    }
+    if (pannedForId.current === selectedId) return; // already panned for this selection
+    if (!map || !animals[selectedId]) return;
+    pannedForId.current = selectedId;
     const { lat, lng } = animals[selectedId];
     map.setView([lat, lng], Math.max(map.getZoom(), 16), { animate: true, duration: 0.5 });
     animalMarkers.current[selectedId]?.openPopup();

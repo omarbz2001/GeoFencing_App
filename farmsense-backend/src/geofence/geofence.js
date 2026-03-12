@@ -1,12 +1,3 @@
-/**
- * Geofence module
- *
- * Polygon is persisted to geofence.json next to this file so it survives
- * server restarts. Falls back to the hardcoded default on first run.
- *
- * Breach detection uses the Ray Casting algorithm.
- */
-
 const fs   = require("fs");
 const path = require("path");
 
@@ -19,9 +10,6 @@ const DEFAULT_POLYGON = [
   [36.8150, 10.1800],
 ];
 
-// ---------------------------------------------------------------------------
-// Load from disk (or use default on first run)
-// ---------------------------------------------------------------------------
 function loadFromDisk() {
   try {
     if (fs.existsSync(PERSIST_FILE)) {
@@ -38,28 +26,17 @@ function loadFromDisk() {
   return { name: "Main Farm", polygon: DEFAULT_POLYGON };
 }
 
-// ---------------------------------------------------------------------------
-// Save to disk (synchronous — only called on explicit user save, not hot path)
-// ---------------------------------------------------------------------------
 function saveToDisk(geofence) {
   try {
     fs.writeFileSync(PERSIST_FILE, JSON.stringify(geofence, null, 2), "utf8");
   } catch (err) {
     console.error("[Geofence] Failed to persist to disk:", err.message);
-    throw err; // bubble up so the HTTP route can return a 500
+    throw err;
   }
 }
 
-// ---------------------------------------------------------------------------
-// In-memory state — initialized from disk
-// ---------------------------------------------------------------------------
 let _geofence = loadFromDisk();
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
-/** Returns a deep copy of the current geofence (safe to send over HTTP/socket) */
 function getGeofence() {
   return {
     name:    _geofence.name,
@@ -67,33 +44,37 @@ function getGeofence() {
   };
 }
 
-/**
- * Update the geofence polygon and persist it to disk.
- * Throws if the disk write fails.
- */
 function updateGeofence(newPolygon, name) {
-  _geofence = {
-    name:    name || _geofence.name,
-    polygon: newPolygon,
-  };
+  _geofence = { name: name || _geofence.name, polygon: newPolygon };
   saveToDisk(_geofence);
 }
 
 // ---------------------------------------------------------------------------
 // Ray casting — point-in-polygon
+//
+// Polygon points are stored as [lat, lng].
+// We treat lat as Y axis and lng as X axis.
+//
+// FIX: the previous version had axes swapped:
+//   - it destructured [yi, xi] = polygon[i]  (lat=y, lng=x — correct)
+//   - but then checked (yi > lng)             (comparing lat to lng — WRONG)
+//   - should be       (xi > lng)              (comparing lng to lng — correct)
+// This caused every animal to be reported as outside the geofence.
 // ---------------------------------------------------------------------------
 function isInsideGeofence(lat, lng) {
-  // Always read _geofence.polygon directly so we use the latest saved shape
   const polygon = _geofence.polygon;
   let inside = false;
   const n = polygon.length;
 
   for (let i = 0, j = n - 1; i < n; j = i++) {
-    const [yi, xi] = polygon[i];
-    const [yj, xj] = polygon[j];
+    const [latI, lngI] = polygon[i];   // lat = Y, lng = X
+    const [latJ, lngJ] = polygon[j];
+
+    // Check if the horizontal ray from (lat, lng) crosses this edge
     const intersect =
-      (yi > lng) !== (yj > lng) &&
-      lat < ((xj - xi) * (lng - yi)) / (yj - yi) + xi;
+      (lngI > lng) !== (lngJ > lng) &&
+      lat < ((latJ - latI) * (lng - lngI)) / (lngJ - lngI) + latI;
+
     if (intersect) inside = !inside;
   }
   return inside;
