@@ -1,7 +1,6 @@
 const express = require("express");
 const router = express.Router();
 const { getAnimalsState, getHistory } = require("../simulator/simulator");
-const { GEOFENCE } = require("../geofence/geofence");
 
 /**
  * GET /api/animals
